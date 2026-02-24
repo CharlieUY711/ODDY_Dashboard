@@ -2,7 +2,8 @@
    RRSS API Service — Frontend ↔ Backend
    Charlie Marketplace Builder v1.5
    ===================================================== */
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+const projectId = 'yomgqobfmgatavnbtvdz';
+const publicAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvbWdxb2JmbWdhdGF2bmJ0dmR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg5MDgwNTQsImV4cCI6MjA1NDQ4NDA1NH0.yRKhFNMIW5dCg_B2xDMNF-VJiTMf9CMBDjEJJDWRmUA';
 
 /* When Supabase isn't configured yet, BASE is empty → all calls return fallback data */
 const IS_CONFIGURED = Boolean(projectId && projectId !== 'YOUR_PROJECT_ID');
