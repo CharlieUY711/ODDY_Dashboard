@@ -53,6 +53,13 @@ export function OrquestadorProvider({ children }: OrquestadorProviderProps) {
         }
 
         const data = await response.json();
+        // Asegurar que modulos sea siempre un array
+        if (data && typeof data === 'object') {
+          if (!Array.isArray(data.modulos)) {
+            // Si modulos no es un array, usar array vacío (fallback)
+            data.modulos = [];
+          }
+        }
         setConfig(data);
         setError(null);
       } catch (err) {

@@ -47,11 +47,11 @@ export function AdminSidebar({ activeSection, onNavigate }: Props) {
   
   // Filtrar NAV_ITEMS según los módulos habilitados
   const enabledModules = useMemo(() => {
-    if (!config || !config.modulos || config.modulos.length === 0) {
-      // Si no hay config o no hay módulos, mostrar todos (fallback)
+    // Si config es null O config.modulos está vacío → mostrar TODOS (fallback)
+    if (!config || !config.modulos || !Array.isArray(config.modulos) || config.modulos.length === 0) {
       return NAV_ITEMS;
     }
-    // Filtrar solo los items cuyo id está en la lista de módulos habilitados
+    // Si config existe Y config.modulos tiene items → mostrar SOLO los NAV_ITEMS cuyo id está en config.modulos
     return NAV_ITEMS.filter(item => config.modulos.includes(item.id));
   }, [config]);
 
