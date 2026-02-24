@@ -1,15 +1,16 @@
 /* =====================================================
    AdminSidebar — navegación plana, sin sub-menús, sin scroll
    ===================================================== */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   LayoutDashboard, ShoppingCart, Megaphone, Wrench, Database,
   Monitor, Sparkles, Package, Truck, Rss, ExternalLink, Plug,
   Search, Blocks, Server,
 } from 'lucide-react';
 import type { MainSection } from '../../AdminDashboard';
+import { useOrquestador } from '../../context/OrquestadorContext';
 
-const ORANGE    = '#FF6835';
+const ORANGE_DEFAULT = '#FF6835';
 const ACTIVE_BG = 'rgba(255,255,255,0.22)';
 const HOVER_BG  = 'rgba(255,255,255,0.12)';
 
@@ -39,15 +40,30 @@ interface Props {
 }
 
 export function AdminSidebar({ activeSection, onNavigate }: Props) {
+  const { config } = useOrquestador();
+  
+  // Color primario del theme o fallback a ORANGE
+  const primaryColor = config?.theme?.primary || ORANGE_DEFAULT;
+  
+  // Filtrar NAV_ITEMS según los módulos habilitados
+  const enabledModules = useMemo(() => {
+    if (!config || !config.modulos || config.modulos.length === 0) {
+      // Si no hay config o no hay módulos, mostrar todos (fallback)
+      return NAV_ITEMS;
+    }
+    // Filtrar solo los items cuyo id está en la lista de módulos habilitados
+    return NAV_ITEMS.filter(item => config.modulos.includes(item.id));
+  }, [config]);
+
   /* resolve which top-level hub "owns" the current section */
-  const activeHub = (NAV_ITEMS.find(n => n.id === activeSection)?.id ?? activeSection) as MainSection;
+  const activeHub = (enabledModules.find(n => n.id === activeSection)?.id ?? activeSection) as MainSection;
 
   return (
     <aside
       style={{
         width: '200px',
         height: '100vh',
-        backgroundColor: ORANGE,
+        backgroundColor: primaryColor,
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
@@ -112,7 +128,7 @@ export function AdminSidebar({ activeSection, onNavigate }: Props) {
 
       {/* ── Nav ── */}
       <nav style={{ flex: 1, padding: '6px 0', overflowY: 'auto' }}>
-        {NAV_ITEMS.map(item => {
+        {enabledModules.map(item => {
           const isActive = activeSection === item.id || activeHub === item.id;
           return (
             <button
@@ -228,7 +244,7 @@ export function AdminSidebar({ activeSection, onNavigate }: Props) {
           gap: '7px',
           padding: '9px 0',
           backgroundColor: '#fff',
-          color: ORANGE,
+          color: primaryColor,
           borderRadius: '10px',
           textDecoration: 'none',
           fontSize: '0.8rem',
