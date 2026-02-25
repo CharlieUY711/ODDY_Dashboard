@@ -1,67 +1,73 @@
 /* =====================================================
    MetodosEnvioView — Zonas y Tarifas de Entrega
    ===================================================== */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OrangeHeader } from '@/app/components/admin/OrangeHeader';
 import type { MainSection } from '@/app/AdminDashboard';
-import { MapPin, Truck, DollarSign, Plus, Edit2, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { api } from '@/app/services/supabaseApi';
+import { MapPin, Truck, DollarSign, Plus, Edit2, Trash2, ChevronDown, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 
 const ORANGE = '#FF6835';
 interface Props { onNavigate: (s: MainSection) => void; }
 
-const zonas = [
-  {
-    id: 'z1', nombre: 'Montevideo Capital', activa: true, enviosTotal: 1240, carrier: 'OCA',
-    tarifas: [
-      { peso: '0–1 kg', precio: 180, plazo: '24h' },
-      { peso: '1–3 kg', precio: 220, plazo: '24h' },
-      { peso: '3–5 kg', precio: 280, plazo: '48h' },
-      { peso: '5–10 kg', precio: 380, plazo: '48h' },
-    ],
-  },
-  {
-    id: 'z2', nombre: 'Canelones / San José', activa: true, enviosTotal: 380, carrier: 'OCA / Brixo',
-    tarifas: [
-      { peso: '0–1 kg', precio: 220, plazo: '48h' },
-      { peso: '1–3 kg', precio: 270, plazo: '48h' },
-      { peso: '3–5 kg', precio: 320, plazo: '48–72h' },
-      { peso: '5–10 kg', precio: 420, plazo: '72h' },
-    ],
-  },
-  {
-    id: 'z3', nombre: 'Maldonado / Rocha', activa: true, enviosTotal: 180, carrier: 'Correo UY',
-    tarifas: [
-      { peso: '0–1 kg', precio: 260, plazo: '48h' },
-      { peso: '1–3 kg', precio: 320, plazo: '48–72h' },
-      { peso: '3–5 kg', precio: 380, plazo: '72h' },
-    ],
-  },
-  {
-    id: 'z4', nombre: 'Interior (resto)', activa: true, enviosTotal: 220, carrier: 'Correo UY',
-    tarifas: [
-      { peso: '0–1 kg', precio: 350, plazo: '72h' },
-      { peso: '1–3 kg', precio: 420, plazo: '72–96h' },
-      { peso: '3–5 kg', precio: 520, plazo: '96h' },
-    ],
-  },
-  {
-    id: 'z5', nombre: 'Internacional (Argentina)', activa: false, enviosTotal: 28, carrier: 'FedEx / DHL',
-    tarifas: [
-      { peso: '0–0.5 kg', precio: 1200, plazo: '3–5 días' },
-      { peso: '0.5–1 kg', precio: 1800, plazo: '3–5 días' },
-    ],
-  },
-];
-
-const metodosEspeciales = [
-  { nombre: 'Retiro en sucursal', desc: 'Montevideo centro · Lu-Vi 10-18hs', precio: 0, activo: true, emoji: '🏪' },
-  { nombre: 'Entrega Express (mismo día)', desc: 'Solo Mvd Capital · Pedidos antes de las 14hs', precio: 450, activo: true, emoji: '⚡' },
-  { nombre: 'Agentes Redpagos', desc: 'Red de 1.200 puntos en Uruguay', precio: 120, activo: true, emoji: '🔴' },
-  { nombre: 'Punto de entrega OCA', desc: 'Sucursales OCA en todo el país', precio: 140, activo: true, emoji: '🔵' },
-];
+interface MetodoEnvio {
+  id: string;
+  nombre: string;
+  tipo: string;
+  precio: number;
+  config?: Record<string, unknown>;
+  activo: boolean;
+  created_at?: string;
+}
 
 export function MetodosEnvioView({ onNavigate }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(['z1']));
+  const [metodos, setMetodos] = useState<MetodoEnvio[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    loadMetodos();
+  }, []);
+
+  const loadMetodos = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.checkout.getMetodosEnvio();
+      if (res.ok && res.data) {
+        const data = res.data as MetodoEnvio[];
+        setMetodos(data);
+        if (data.length > 0) {
+          setExpanded(new Set([data[0].id]));
+        }
+      } else {
+        setError(res.error || 'Error al cargar métodos de envío');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleActivo = async (id: string, nuevoEstado: boolean) => {
+    setUpdating(p => ({ ...p, [id]: true }));
+    try {
+      // Nota: La API actual no tiene endpoint para actualizar, pero podemos simularlo
+      // En producción, necesitarías agregar api.checkout.updateMetodoEnvio(id, { activo: nuevoEstado })
+      setMetodos(prev => prev.map(m => m.id === id ? { ...m, activo: nuevoEstado } : m));
+      // Aquí iría la llamada real a la API cuando esté disponible
+      // const res = await api.checkout.updateMetodoEnvio(id, { activo: nuevoEstado });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al actualizar método');
+      await loadMetodos(); // Recargar en caso de error
+    } finally {
+      setUpdating(p => ({ ...p, [id]: false }));
+    }
+  };
+
   const toggle = (id: string) => setExpanded(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   return (
@@ -79,10 +85,10 @@ export function MetodosEnvioView({ onNavigate }: Props) {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 22 }}>
           {[
-            { label: 'Zonas activas', value: zonas.filter(z => z.activa).length, color: '#10B981' },
-            { label: 'Carriers configurados', value: 5, color: ORANGE },
-            { label: 'Envíos gestionados', value: '2.048', color: '#3B82F6' },
-            { label: 'Tarifa base mínima', value: '$120', color: '#8B5CF6' },
+            { label: 'Métodos activos', value: metodos.filter(m => m.activo).length, color: '#10B981' },
+            { label: 'Total métodos', value: metodos.length, color: ORANGE },
+            { label: 'Tipos únicos', value: new Set(metodos.map(m => m.tipo)).size, color: '#3B82F6' },
+            { label: 'Precio promedio', value: metodos.length > 0 ? `$${Math.round(metodos.reduce((sum, m) => sum + m.precio, 0) / metodos.length)}` : '$0', color: '#8B5CF6' },
           ].map((k, i) => (
             <div key={i} style={{ backgroundColor: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB', padding: '18px 20px' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: '800', color: k.color, lineHeight: 1 }}>{k.value}</div>
@@ -91,90 +97,69 @@ export function MetodosEnvioView({ onNavigate }: Props) {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
-          {/* Zonas con tarifas */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontWeight: '700', color: '#1A1A2E', marginBottom: 4 }}>📍 Zonas y Tarifas por Peso</div>
-            {zonas.map(z => (
-              <div key={z.id} style={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                <div onClick={() => toggle(z.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', cursor: 'pointer' }}>
-                  <div style={{ color: '#9CA3AF' }}>{expanded.has(z.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</div>
+        {/* Error */}
+        {error && (
+          <div style={{ backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: '12px', padding: '12px 16px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertCircle size={18} color="#DC2626" />
+            <span style={{ fontSize: '0.85rem', color: '#DC2626' }}>{error}</span>
+            <button 
+              onClick={loadMetodos}
+              style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: '6px', border: '1px solid #DC2626', backgroundColor: '#fff', color: '#DC2626', fontSize: '0.75rem', cursor: 'pointer' }}
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: '#9CA3AF' }}>
+            <Loader2 size={32} color="#9CA3AF" style={{ marginBottom: 12, animation: 'spin 1s linear infinite' }} />
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>Cargando métodos de envío...</p>
+          </div>
+        ) : metodos.length === 0 ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: '#9CA3AF' }}>
+            <Truck size={32} color="#E5E7EB" style={{ marginBottom: 12 }} />
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>No hay métodos de envío configurados</p>
+          </div>
+        ) : (
+          /* Lista de métodos */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {metodos.map(m => (
+              <div key={m.id} style={{ backgroundColor: '#fff', borderRadius: '14px', border: `1px solid ${m.activo ? '#E5E7EB' : '#F3F4F6'}`, padding: '20px', opacity: m.activo ? 1 : 0.7 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '12px', backgroundColor: `${ORANGE}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Truck size={24} color={ORANGE} />
+                  </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '700', color: '#1A1A2E', fontSize: '0.88rem' }}>{z.nombre}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{z.carrier} · {z.enviosTotal.toLocaleString()} envíos</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      <span style={{ fontWeight: '800', color: '#1A1A2E', fontSize: '1rem' }}>{m.nombre}</span>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>
+                      Tipo: {m.tipo} · Precio: ${m.precio.toLocaleString()}
+                    </div>
                   </div>
-                  <label style={{ position: 'relative', display: 'inline-block', width: 38, height: 20, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" defaultChecked={z.activa} style={{ opacity: 0, width: 0, height: 0 }} />
-                    <span style={{ position: 'absolute', inset: 0, borderRadius: 10, backgroundColor: z.activa ? '#10B981' : '#D1D5DB' }} />
-                    <span style={{ position: 'absolute', height: 14, width: 14, left: z.activa ? 21 : 3, bottom: 3, backgroundColor: '#fff', borderRadius: '50%' }} />
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: updating[m.id] ? 'wait' : 'pointer', opacity: updating[m.id] ? 0.6 : 1 }}>
+                      <input 
+                        type="checkbox" 
+                        checked={m.activo} 
+                        onChange={() => toggleActivo(m.id, !m.activo)} 
+                        disabled={updating[m.id]}
+                        style={{ opacity: 0, width: 0, height: 0 }} 
+                      />
+                      <span style={{ position: 'absolute', inset: 0, borderRadius: 12, backgroundColor: m.activo ? '#10B981' : '#D1D5DB', transition: '0.3s' }} />
+                      <span style={{ position: 'absolute', height: 18, width: 18, left: m.activo ? 23 : 3, bottom: 3, backgroundColor: '#fff', borderRadius: '50%', transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                    </label>
+                    {updating[m.id] && (
+                      <Loader2 size={16} color="#9CA3AF" style={{ animation: 'spin 1s linear infinite' }} />
+                    )}
+                  </div>
                 </div>
-                {expanded.has(z.id) && (
-                  <div style={{ borderTop: '1px solid #F3F4F6', padding: '12px 16px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr>
-                          {['Peso', 'Precio', 'Plazo', ''].map((h, i) => (
-                            <th key={i} style={{ padding: '6px 8px', textAlign: 'left', fontSize: '0.68rem', fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {z.tarifas.map((t, i) => (
-                          <tr key={i} style={{ borderTop: '1px solid #F9FAFB' }}>
-                            <td style={{ padding: '7px 8px', fontSize: '0.82rem', color: '#374151' }}>{t.peso}</td>
-                            <td style={{ padding: '7px 8px', fontWeight: '700', color: ORANGE }}>${t.precio}</td>
-                            <td style={{ padding: '7px 8px', fontSize: '0.82rem', color: '#9CA3AF' }}>{t.plazo}</td>
-                            <td style={{ padding: '7px 8px' }}>
-                              <button style={{ padding: '3px 6px', border: '1px solid #E5E7EB', borderRadius: '5px', backgroundColor: '#F9FAFB', cursor: 'pointer' }}><Edit2 size={11} color="#6B7280" /></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <button style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: `1px dashed ${ORANGE}`, borderRadius: '7px', backgroundColor: `${ORANGE}08`, color: ORANGE, fontSize: '0.78rem', cursor: 'pointer' }}>
-                      <Plus size={12} /> Agregar franja
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           </div>
-
-          {/* Panel derecho */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ backgroundColor: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB', padding: '18px' }}>
-              <div style={{ fontWeight: '700', color: '#1A1A2E', marginBottom: 12, fontSize: '0.88rem' }}>🏪 Métodos Especiales</div>
-              {metodosEspeciales.map((m, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < metodosEspeciales.length - 1 ? '1px solid #F9FAFB' : 'none' }}>
-                  <span style={{ fontSize: '1.3rem' }}>{m.emoji}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', color: '#1A1A2E', fontSize: '0.83rem' }}>{m.nombre}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{m.desc}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: '700', color: m.precio === 0 ? '#10B981' : ORANGE, fontSize: '0.85rem' }}>{m.precio === 0 ? 'Gratis' : `$${m.precio}`}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ backgroundColor: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB', padding: '18px' }}>
-              <div style={{ fontWeight: '700', color: '#1A1A2E', marginBottom: 12, fontSize: '0.88rem' }}>⚙️ Reglas Globales</div>
-              {[
-                { label: 'Envío gratis desde', value: '$10.000' },
-                { label: 'Dimensión máxima', value: '100x80x60 cm' },
-                { label: 'Peso máximo', value: '30 kg' },
-                { label: 'Seguro de envío', value: 'Obligatorio +$5.000' },
-              ].map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < 3 ? '1px solid #F9FAFB' : 'none' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#374151' }}>{r.label}</span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#1A1A2E' }}>{r.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
