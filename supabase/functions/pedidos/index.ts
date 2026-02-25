@@ -1,305 +1,102 @@
-/* =====================================================
-   Pedidos Edge Function — Gestión de Pedidos y Estadísticas
-   ODDY Marketplace Backend
-   ===================================================== */
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const SUPABASE_URL = "https://yomgqobfmgatavnbtvdz.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvbWdxb2JmbWdhdGF2bmJ0dmR6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDQzMDMxOSwiZXhwIjoyMDg2MDA2MzE5fQ.pcooafz3LUPmxKBoBF7rR_ifu2DyGcMGbBWJXhUl6nI";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const url = new URL(req.url);
+  const segments = url.pathname.replace(/^\/pedidos\/?/, "").split("/").filter(Boolean);
+  // /pedidos → []
+  // /pedidos/stats → ["stats"]
+  // /pedidos/123 → ["123"]
+  // /pedidos/123/estado → ["123", "estado"]
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // GET /pedidos/stats
+    if (segments[0] === "stats" && req.method === "GET") {
+      const [total, pendientes, confirmados, enviados, entregados, cancelados, revenue] = await Promise.all([
+        supabase.from("pedidos").select("id", { count: "exact", head: true }),
+        supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("estado", "pendiente"),
+        supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("estado", "confirmado"),
+        supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("estado", "enviado"),
+        supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("estado", "entregado"),
+        supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("estado", "cancelado"),
+        supabase.from("pedidos").select("total").neq("estado", "cancelado"),
+      ]);
+      const revenueTotal = (revenue.data || []).reduce((sum, p) => sum + (p.total || 0), 0);
+      return json({ ok: true, data: { total: total.count, por_estado: { pendiente: pendientes.count, confirmado: confirmados.count, enviado: enviados.count, entregado: entregados.count, cancelado: cancelados.count }, revenue_total: revenueTotal } });
+    }
 
-    const url = new URL(req.url);
-    const pathname = url.pathname;
-    const searchParams = url.searchParams;
+    // PUT /pedidos/:id/estado o /pedidos/:id/pago
+    if (segments.length === 2 && req.method === "PUT") {
+      const [id, accion] = segments;
+      const body = await req.json();
+      if (accion === "estado") {
+        const { data, error } = await supabase.from("pedidos").update({ estado: body.estado }).eq("id", id).select().single();
+        if (error) return json({ ok: false, error: error.message }, 500);
+        return json({ ok: true, data });
+      }
+      if (accion === "pago") {
+        const { data: current } = await supabase.from("pedidos").select("metadata").eq("id", id).single();
+        const { data, error } = await supabase.from("pedidos").update({ metadata: { ...(current?.metadata || {}), estado_pago: body.estado_pago } }).eq("id", id).select().single();
+        if (error) return json({ ok: false, error: error.message }, 500);
+        return json({ ok: true, data });
+      }
+    }
 
-    const pathParts = pathname.split('/').filter(Boolean);
+    // GET/DELETE /pedidos/:id
+    if (segments.length === 1 && segments[0] !== "stats") {
+      const id = segments[0];
+      if (req.method === "GET") {
+        const { data, error } = await supabase.from("pedidos").select("*, comprador:personas!comprador_id(id, nombre, apellido, email, telefono), metodo_pago:metodos_pago(id, nombre, tipo), pedido_items(*)").eq("id", id).single();
+        if (error) return json({ ok: false, error: error.message }, 404);
+        return json({ ok: true, data });
+      }
+      if (req.method === "DELETE") {
+        const { data: pedido } = await supabase.from("pedidos").select("estado, pedido_items(variante_id, cantidad)").eq("id", id).single();
+        if (pedido?.estado === "entregado") return json({ ok: false, error: "No se puede cancelar un pedido entregado" }, 400);
+        if (pedido?.pedido_items) {
+          for (const item of pedido.pedido_items) {
+            const { data: stock } = await supabase.from("producto_stock").select("reservado").eq("variante_id", item.variante_id).single();
+            if (stock) await supabase.from("producto_stock").update({ reservado: Math.max(0, stock.reservado - item.cantidad) }).eq("variante_id", item.variante_id);
+          }
+        }
+        const { error } = await supabase.from("pedidos").update({ estado: "cancelado" }).eq("id", id);
+        if (error) return json({ ok: false, error: error.message }, 500);
+        return json({ ok: true, data: { id, estado: "cancelado" } });
+      }
+    }
 
     // GET /pedidos
-    if (pathParts.length === 1 && pathParts[0] === 'pedidos') {
-      if (req.method === 'GET') {
-        const estado = searchParams.get('estado');
-        const compradorId = searchParams.get('comprador_id');
-        const vendedorId = searchParams.get('vendedor_id');
-        const desde = searchParams.get('desde');
-        const hasta = searchParams.get('hasta');
-        const page = parseInt(searchParams.get('page') || '1');
-        const limit = parseInt(searchParams.get('limit') || '20');
-        const offset = (page - 1) * limit;
-
-        let query = supabase
-          .from('pedidos')
-          .select('*', { count: 'exact' });
-
-        if (estado) query = query.eq('estado', estado);
-        if (compradorId) query = query.eq('comprador_id', compradorId);
-        if (vendedorId) query = query.eq('vendedor_id', vendedorId);
-        if (desde) query = query.gte('created_at', desde);
-        if (hasta) query = query.lte('created_at', hasta);
-
-        query = query.order('created_at', { ascending: false })
-          .range(offset, offset + limit - 1);
-
-        const { data, error, count } = await query;
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            data,
-            paginacion: {
-              page,
-              limit,
-              total: count || 0,
-              total_pages: Math.ceil((count || 0) / limit),
-            }
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (segments.length === 0 && req.method === "GET") {
+      const page = parseInt(url.searchParams.get("page") || "1");
+      const limit = parseInt(url.searchParams.get("limit") || "20");
+      const from = (page - 1) * limit;
+      let q = supabase.from("pedidos").select("*, comprador:personas!comprador_id(id, nombre, apellido, email), metodo_pago:metodos_pago(id, nombre, tipo)", { count: "exact" }).order("created_at", { ascending: false }).range(from, from + limit - 1);
+      const estado = url.searchParams.get("estado");
+      const comprador_id = url.searchParams.get("comprador_id");
+      const vendedor_id = url.searchParams.get("vendedor_id");
+      if (estado) q = q.eq("estado", estado);
+      if (comprador_id) q = q.eq("comprador_id", comprador_id);
+      if (vendedor_id) q = q.eq("vendedor_id", vendedor_id);
+      const { data, error, count } = await q;
+      if (error) return json({ ok: false, error: error.message }, 500);
+      return json({ ok: true, data: { items: data, total: count, page, limit } });
     }
 
-    // GET /pedidos/stats
-    if (pathParts.length === 2 && pathParts[0] === 'pedidos' && pathParts[1] === 'stats') {
-      if (req.method === 'GET') {
-        const tiendaId = searchParams.get('tienda_id');
-        const desde = searchParams.get('desde');
-        const hasta = searchParams.get('hasta');
-
-        let query = supabase.from('pedidos').select('estado, total, created_at');
-
-        if (tiendaId) query = query.eq('tienda_id', tiendaId);
-        if (desde) query = query.gte('created_at', desde);
-        if (hasta) query = query.lte('created_at', hasta);
-
-        const { data: pedidos, error } = await query;
-
-        if (error) throw error;
-
-        // Calcular estadísticas
-        const stats = {
-          total_pedidos: pedidos?.length || 0,
-          por_estado: {} as Record<string, number>,
-          total_ventas: 0,
-          promedio_pedido: 0,
-        };
-
-        pedidos?.forEach((pedido) => {
-          // Contar por estado
-          stats.por_estado[pedido.estado] = (stats.por_estado[pedido.estado] || 0) + 1;
-          
-          // Sumar totales (solo pedidos confirmados/completados)
-          if (['confirmado', 'completado', 'enviado'].includes(pedido.estado)) {
-            stats.total_ventas += pedido.total || 0;
-          }
-        });
-
-        if (stats.total_pedidos > 0) {
-          stats.promedio_pedido = stats.total_ventas / stats.total_pedidos;
-        }
-
-        return new Response(
-          JSON.stringify({ ok: true, data: stats }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // PUT /pedidos/:id/estado
-    if (pathParts.length === 3 && pathParts[0] === 'pedidos' && pathParts[2] === 'estado') {
-      if (req.method === 'PUT') {
-        const pedidoId = pathParts[1];
-        const body = await req.json();
-        const { estado } = body;
-
-        if (!estado) {
-          return new Response(
-            JSON.stringify({ ok: false, error: 'Estado requerido' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { data, error } = await supabase
-          .from('pedidos')
-          .update({ estado })
-          .eq('id', pedidoId)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ ok: true, data }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // PUT /pedidos/:id/pago
-    if (pathParts.length === 3 && pathParts[0] === 'pedidos' && pathParts[2] === 'pago') {
-      if (req.method === 'PUT') {
-        const pedidoId = pathParts[1];
-        const body = await req.json();
-        const { estado_pago } = body;
-
-        if (!estado_pago) {
-          return new Response(
-            JSON.stringify({ ok: false, error: 'Estado de pago requerido' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { data, error } = await supabase
-          .from('pedidos')
-          .update({ estado_pago })
-          .eq('id', pedidoId)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ ok: true, data }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // GET /pedidos/:id o DELETE /pedidos/:id
-    if (pathParts.length === 2 && pathParts[0] === 'pedidos') {
-      const pedidoId = pathParts[1];
-
-      if (req.method === 'GET') {
-        // Obtener pedido
-        const { data: pedido, error: pedidoError } = await supabase
-          .from('pedidos')
-          .select('*')
-          .eq('id', pedidoId)
-          .single();
-
-        if (pedidoError) throw pedidoError;
-
-        // Obtener items del pedido
-        const { data: items, error: itemsError } = await supabase
-          .from('pedido_items')
-          .select('*')
-          .eq('pedido_id', pedidoId);
-
-        if (itemsError) throw itemsError;
-
-        // Obtener personas relacionadas
-        const personasIds = [
-          pedido.comprador_id,
-          pedido.vendedor_id,
-        ].filter(Boolean);
-
-        let personas = [];
-        if (personasIds.length > 0) {
-          const { data: personasData, error: personasError } = await supabase
-            .from('personas')
-            .select('*')
-            .in('id', personasIds);
-
-          if (!personasError && personasData) {
-            personas = personasData;
-          }
-        }
-
-        // Obtener método de pago
-        let metodoPago = null;
-        if (pedido.metodo_pago_id) {
-          const { data: metodoPagoData } = await supabase
-            .from('metodos_pago')
-            .select('*')
-            .eq('id', pedido.metodo_pago_id)
-            .single();
-
-          metodoPago = metodoPagoData;
-        }
-
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            data: {
-              pedido,
-              items,
-              personas,
-              metodo_pago: metodoPago,
-            }
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // DELETE /pedidos/:id (cancelar)
-      if (req.method === 'DELETE') {
-        // Obtener items del pedido para liberar stock
-        const { data: items, error: itemsError } = await supabase
-          .from('pedido_items')
-          .select('variante_id, cantidad')
-          .eq('pedido_id', pedidoId);
-
-        if (itemsError) throw itemsError;
-
-        // Liberar stock reservado
-        if (items && items.length > 0) {
-          for (const item of items) {
-            if (item.variante_id) {
-              const { data: stock } = await supabase
-                .from('producto_stock')
-                .select('reservado')
-                .eq('variante_id', item.variante_id)
-                .single();
-
-              const nuevoReservado = Math.max(0, (stock?.reservado || 0) - (item.cantidad || 0));
-
-              await supabase
-                .from('producto_stock')
-                .update({ reservado: nuevoReservado })
-                .eq('variante_id', item.variante_id);
-            }
-          }
-        }
-
-        // Actualizar estado del pedido a cancelado
-        const { data, error } = await supabase
-          .from('pedidos')
-          .update({ estado: 'cancelado' })
-          .eq('id', pedidoId)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ ok: true, data }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    return new Response(
-      JSON.stringify({ ok: false, error: 'Ruta no encontrada' }),
-      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ ok: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json({ ok: false, error: "Ruta no encontrada" }, 404);
+  } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
   }
 });
