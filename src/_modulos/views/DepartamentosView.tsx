@@ -27,11 +27,20 @@ function NodoDept({ dept, onEdit }: { dept: Departamento; onEdit: (dept: Departa
   const [abierto, setAbierto] = useState(false);
   const icono = dept.icono || '📁';
   const slug = dept.nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const color = dept.color || ORANGE;
   
   return (
     <div>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderBottom: '1px solid #F9FAFB', cursor: 'pointer' }}
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 8, 
+          padding: '9px 16px', 
+          borderBottom: '1px solid #F9FAFB',
+          borderLeft: `4px solid ${color}`,
+          cursor: 'pointer' 
+        }}
         onClick={() => setAbierto(!abierto)}
       >
         <div style={{ color: '#9CA3AF', width: 14 }}>
