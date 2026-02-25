@@ -1,5 +1,1 @@
-{
-  "buildCommand": "npm install vite@6.3.5 --no-save && npx vite build",
-  "outputDirectory": "dist",
-  "framework": "vite"
-}
+{"outputDirectory": "dist"}
