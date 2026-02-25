@@ -7,7 +7,7 @@ const BASE_URL = `${SUPABASE_URL}/functions/v1`;
 
 // Obtener anon key de variables de entorno o usar fallback
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvbWdxb2JmbWdhdGF2bmJ0dmR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg5MDgwNTQsImV4cCI6MjA1NDQ4NDA1NH0.yRKhFNMIW5dCg_B2xDMNF-VJiTMf9CMBDjEJJDWRmUA';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvbWdxb2JmbWdhdGF2bmJ0dmR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MzAzMTksImV4cCI6MjA4NjAwNjMxOX0.yZ9Zb6Jz9BKZTkn7Ld8TzeLyHsb8YhBAoCvFLPBiqZk';
 
 const HEADERS = {
   'Content-Type': 'application/json',

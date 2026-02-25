@@ -315,7 +315,12 @@ export function PedidosView({ onNavigate }: Props) {
     try {
       const res = await api.pedidos.getPedido(id);
       if (res.ok && res.data) {
-        setSelectedPedido(res.data as Pedido);
+        const pedidoData = res.data as any;
+        // Mapear pedido_items a items si existe
+        if (pedidoData.pedido_items && !pedidoData.items) {
+          pedidoData.items = pedidoData.pedido_items;
+        }
+        setSelectedPedido(pedidoData as Pedido);
       } else {
         alert(res.error || 'Error al cargar detalle del pedido');
       }
@@ -337,6 +342,23 @@ export function PedidosView({ onNavigate }: Props) {
         }
       } else {
         alert(res.error || 'Error al cambiar estado');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error desconocido');
+    }
+  };
+
+  const handleCancelarPedido = async (id: string) => {
+    if (!confirm('¿Estás seguro de que querés cancelar este pedido?')) return;
+    try {
+      const res = await api.pedidos.cancelarPedido(id);
+      if (res.ok) {
+        await loadPedidos();
+        if (selectedPedido && selectedPedido.id === id) {
+          setSelectedPedido(null);
+        }
+      } else {
+        alert(res.error || 'Error al cancelar pedido');
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error desconocido');
@@ -705,6 +727,23 @@ export function PedidosView({ onNavigate }: Props) {
                 )}
 
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  {selectedPedido.estado !== 'cancelado' && selectedPedido.estado !== 'entregado' && (
+                    <button
+                      onClick={() => handleCancelarPedido(selectedPedido.id)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: '1px solid #DC2626',
+                        backgroundColor: '#fff',
+                        color: '#DC2626',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                      }}
+                    >
+                      Cancelar Pedido
+                    </button>
+                  )}
                   <select
                     onChange={async e => {
                       const nuevoEstado = e.target.value as EstadoPedido;
