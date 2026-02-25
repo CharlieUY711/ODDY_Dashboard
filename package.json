@@ -8,7 +8,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "build": "npx vite build",
+    "build": "npm install vite@6.3.5 --no-save && npx vite build",
     "dev": "vite"
   },
   "dependencies": {
